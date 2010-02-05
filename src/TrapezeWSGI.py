@@ -1,3 +1,19 @@
+#
+
+#
+# Copyright (c) 2010 John Weaver
+#
+# This program is free software: you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 3 of the License, or (at your option) any later 
+# version.
+# This program is distributed in the hope that it will be useful, but WITHOUT 
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along with 
+# this program. If not, see http://www.gnu.org/ licenses/.
+
 from amqplib import client_0_8 as amqp
 
 from wsgiref.handlers import SimpleHandler
@@ -75,7 +91,12 @@ class TrapezeWSGI:
 
     headers = mimetools.Message(stream)
 
-    host_parts = headers.get('host', '').split(':')
+    forwarded_host = headers.get('x-forwarded-host', '')
+    if forwarded_host != '':
+      host_parts = forwarded_host.split(':')
+    else:
+      host_parts = headers.get('host', '').split(':')
+
     # TODO this doesn't take HTTPS into account. How could we tell if this request came to us via HTTPS at this point?
     if len(host_parts) == 2:
       [host, port] = host_parts
@@ -87,7 +108,7 @@ class TrapezeWSGI:
     env['REQUEST_METHOD'] = command
     env['SERVER_NAME'] = host
     env['SERVER_PORT'] = port
-    env['REMOTE_HOST'] = '127.0.0.1' # TODO ?
+    env['REMOTE_HOST'] = None
     env['CONTENT_LENGTH'] = headers.get('Content-Length', 0)
     env['SCRIPT_NAME'] = ''
     env['PATH_INFO'] = path
@@ -112,7 +133,6 @@ class TrapezeWSGI:
 
     # use self.handler.update_environ() to set environ vars
     env = self._extract_env(headers)
-    print env
     self.handler.update_environ(env)
     
     self.handler.run(self.application)
@@ -127,7 +147,6 @@ class TrapezeWSGI:
     self.input_buffer.truncate(0)
     self.output_buffer.truncate(0)
     # TODO logging the contents of error buffer?
-    print self.error_buffer.getvalue()
     self.error_buffer.truncate(0)
 
   def handle_request(self, cleanup=True):
