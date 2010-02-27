@@ -37,13 +37,18 @@ class TrapezeWSGIHandler(SimpleHandler):
 
 
 class TrapezeWSGI:
+    """
+    Handle HTTP requests that have been encapsulated in an AMQP message
+    by passing them via WSGI to a Python application.
+    """
     DEFAULT_QUEUE_NAME = 'app'
     CONSUMER_TAG = 'consumer'
 
     def __init__(self, application, routing_key,
                  conn_settings=('localhost:5672', 'guest', 'guest',
-                                      '/', False),
-                 exchange='trapeze', wsgi_handler=SimpleHandler):
+                                '/', False),
+                 exchange='trapeze', wsgi_handler=TrapezeWSGIHandler):
+        """Initialize the AMQP connection, channel, and receiving queue."""
         self.output_buffer = cStringIO.StringIO()
         self.input_buffer = cStringIO.StringIO()
         self.error_buffer = cStringIO.StringIO()
@@ -72,6 +77,10 @@ class TrapezeWSGI:
                                         no_ack=True)
 
     def serve_forever(self):
+        """Handle one request at a time until
+        an unhandled exception is raised
+        """
+
         try:
             while True:
                 self.handle_request(False)
@@ -79,6 +88,10 @@ class TrapezeWSGI:
             self._cleanup()
 
     def _extract_env(self, request_headers):
+        """Extract necessary information from the HTTP request headers
+        and store it in the WSGI environment dictionary.
+        """
+
         stream = cStringIO.StringIO(request_headers)
         # this isn't a reliable method of doing this,
         # but since we only plan on supporting one client...
@@ -154,6 +167,9 @@ class TrapezeWSGI:
         self.error_buffer.truncate(0)
 
     def handle_request(self, cleanup=True):
+        """Wait for a callback to handle a single request, and
+        close all resources afterwards if cleanup == True.
+        """
         try:
             self.amqp_channel.wait()
         finally:
@@ -161,6 +177,7 @@ class TrapezeWSGI:
                 self._cleanup()
 
     def _cleanup(self):
+        """Close all buffers, AMQP channels, and the AMQP connection."""
         self.amqp_channel.basic_cancel(TrapezeWSGI.CONSUMER_TAG)
         self.input_buffer.close()
         self.output_buffer.close()
