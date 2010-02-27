@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='trapeze-wsgi',
-      version='0.1.0',
+      version='0.1.1',
       author='John Weaver',
       author_email='john@pledge4code.com',
       url='http://github.com/saebyn/trapeze-wsgi/',
