@@ -21,6 +21,7 @@ from wsgiref.handlers import SimpleHandler
 import mimetools
 import os
 import cStringIO
+import inspect
 
 
 class TrapezeWSGIHandler(SimpleHandler):
@@ -207,7 +208,13 @@ Module path to WSGI application (e.g. django.core.handlers.wsgi.WSGIHandler).
     application_module = __import__(application_mod_name,
                                     globals(), locals(),
                                     [application_class_name])
-    application = getattr(application_module, application_class_name)()
+    application_object = getattr(application_module, application_class_name)
+
+    if inspect.isclass(application_object):
+        application = application_object()
+    else:
+        application = application_object
+
     trapezewsgi_server = TrapezeWSGI(application, routing_key)
     trapezewsgi_server.serve_forever()
 
