@@ -8,7 +8,7 @@ setup(name='trapeze-wsgi',
       package_dir={'': 'src'},
       packages=[''],
       install_requires=['amqplib >= 0.6.1'],
-      classifiers = [
+      classifiers=[
         'Development Status :: 2 - Pre-Alpha',
         'Environment :: No Input/Output (Daemon)',
         'Intended Audience :: Developers',
@@ -17,6 +17,5 @@ setup(name='trapeze-wsgi',
         'Programming Language :: Python :: 2.6',
         'Topic :: Internet :: WWW/HTTP :: WSGI :: Server',
       ],
-      platforms = ('Any',),
+      platforms=('Any',),
      )
-
