@@ -20,9 +20,18 @@ from amqplib import client_0_8 as amqp
 
 from wsgiref.handlers import SimpleHandler
 import mimetools
-import os
+import os, os.path
 import cStringIO
 import inspect
+
+#from pyamqpclient.configurableclient \
+#import ClientWithNetAndFileConfig as Client
+
+from pyamqpclient.configurableclient import ClientWithFileConfig as Client
+from pyamqpclient.channel import Channel
+from pyamqpclient.consumer import ReplyingConsumer
+
+CONFIG_DIR = '/etc'
 
 
 class TrapezeWSGIHandler(SimpleHandler):
@@ -38,56 +47,28 @@ class TrapezeWSGIHandler(SimpleHandler):
         self.base_env.update(environ)
 
 
-class TrapezeWSGI:
+class TrapezeWSGI(Client):
     """
     Handle HTTP requests that have been encapsulated in an AMQP message
     by passing them via WSGI to a Python application.
     """
-    DEFAULT_QUEUE_NAME = 'app'
-    CONSUMER_TAG = 'consumer'
+    queue = Channel(ReplyingConsumer, '_deliver_callback', 'trapeze',
+                    {'durable': False, 'exclusive': False, 
+                     'auto_delete': False})
 
-    def __init__(self, application, routing_key,
-                 conn_settings=('localhost:5672', 'guest', 'guest',
-                                '/', False),
-                 exchange='trapeze', wsgi_handler=TrapezeWSGIHandler):
+    def __init__(self, application, routing_key, 
+                 wsgi_handler=TrapezeWSGIHandler):
         """Initialize the AMQP connection, channel, and receiving queue."""
         self.output_buffer = cStringIO.StringIO()
         self.input_buffer = cStringIO.StringIO()
         self.error_buffer = cStringIO.StringIO()
 
-        self.amqp_connection = amqp.Connection(host=conn_settings[0],
-                                               userid=conn_settings[1],
-                                               password=conn_settings[2],
-                                               virtual_host=conn_settings[3],
-                                               insist=conn_settings[4])
-        self.amqp_channel = self.amqp_connection.channel()
-        self.amqp_channel.queue_declare(queue=TrapezeWSGI.DEFAULT_QUEUE_NAME,
-                                        durable=False, exclusive=False,
-                                        auto_delete=False)
-        self.amqp_channel.queue_bind(queue=TrapezeWSGI.DEFAULT_QUEUE_NAME,
-                                     exchange=exchange,
-                                     routing_key=routing_key)
-
         self.application = application
         self.handler = TrapezeWSGIHandler(self.input_buffer,
                                           self.output_buffer,
                                           self.error_buffer)
-
-        self.amqp_channel.basic_consume(queue=TrapezeWSGI.DEFAULT_QUEUE_NAME,
-                                        callback=self._deliver_callback,
-                                        consumer_tag=TrapezeWSGI.CONSUMER_TAG,
-                                        no_ack=True)
-
-    def serve_forever(self):
-        """Handle one request at a time until
-        an unhandled exception is raised
-        """
-
-        try:
-            while True:
-                self.handle_request(False)
-        finally:
-            self._cleanup()
+        Client.__init__(self, os.path.join(CONFIG_DIR, 'trapeze-wsgi.conf'))
+        self.queue.set_routing_key(routing_key)
 
     def _extract_env(self, request_headers):
         """Extract necessary information from the HTTP request headers
@@ -159,33 +140,17 @@ class TrapezeWSGI:
         response = amqp.Message(self.output_buffer.getvalue(),
                                 correlation_id=message.message_id)
 
-        # don't ack until after wsgi app returns response and we are just about
-        # to send that back to the queue.
-        self.amqp_channel.basic_ack(message.delivery_tag)
-        self.amqp_channel.basic_publish(response, routing_key=message.reply_to)
         self.input_buffer.truncate(0)
         self.output_buffer.truncate(0)
         # TODO logging the contents of error buffer?
         self.error_buffer.truncate(0)
 
-    def handle_request(self, cleanup=True):
-        """Wait for a callback to handle a single request, and
-        close all resources afterwards if cleanup == True.
-        """
-        try:
-            self.amqp_channel.wait()
-        finally:
-            if cleanup:
-                self._cleanup()
+        return response
 
-    def _cleanup(self):
-        """Close all buffers, AMQP channels, and the AMQP connection."""
-        self.amqp_channel.basic_cancel(TrapezeWSGI.CONSUMER_TAG)
+    def __del__(self):
         self.input_buffer.close()
         self.output_buffer.close()
         self.error_buffer.close()
-        self.amqp_channel.close()
-        self.amqp_connection.close()
 
 
 def main():
